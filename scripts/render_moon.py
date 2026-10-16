@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """
-Render a 1200x1600 moon-phase dashboard for a 6-colour E Ink Spectra 6 panel.
+Render an 800x480 landscape moon-phase dashboard for the Seeed reTerminal E1002
+(7.3" 6-colour E Ink Spectra 6 panel).
+
+Adapted from MostlyFunctionalEngineering/moon_phase_dashboard (1200x1600 portrait
+for the E1004) -- astronomy, albedo and dithering code unchanged; layout rebuilt
+for the E1002's 800x480 landscape panel: moon on the left, info column on the right.
 
 The image only ever contains the six panel colours (black, white, red, yellow,
 green, blue).  The moon itself is shaded in greyscale and error-diffusion
@@ -10,7 +15,7 @@ drawn as crisp flat colours.
 Configuration is via environment variables (all optional):
 
   TZ_NAME      IANA time zone for dates/times on the display
-               (default: America/Los_Angeles)
+               (default: Asia/Shanghai)
   LAT, LON     Observer location in decimal degrees (e.g. 34.05 / -118.24).
                Enables moonrise / moonset on the display.
   HEMISPHERE   "north" (default) or "south" -- south flips the moon 180 degrees
@@ -39,7 +44,7 @@ from PIL import Image, ImageDraw, ImageFont
 # --------------------------------------------------------------------------
 # Canvas + palette
 # --------------------------------------------------------------------------
-W, H = 1200, 1600
+W, H = 800, 480
 SS = 3  # supersampling factor for the flat-colour UI layer
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -478,11 +483,14 @@ class Ui:
 
 
 # --------------------------------------------------------------------------
-# Layout
+# Layout (800x480 landscape: moon left, info column right)
 # --------------------------------------------------------------------------
-CX, CY = 600, 566          # moon centre
-R_MOON = 410
-R_RING = 470
+CX, CY = 190, 278          # moon centre
+R_MOON = 132
+R_RING = 162
+
+X0 = 380                   # left edge of the right info column
+COL_W = W - 28 - X0        # info column width (392 px)
 
 
 def fmt_time(dt):
@@ -513,124 +521,127 @@ def draw_stars(ui):
     rng = random.Random(42)
     placed = []
     tries = 0
-    while len(placed) < 95 and tries < 5000:
+    while len(placed) < 36 and tries < 5000:
         tries += 1
-        x, y = rng.uniform(20, W - 20), rng.uniform(92, 1050)
-        if math.hypot(x - CX, y - CY) < R_RING + 34:
+        x, y = rng.uniform(16, 356), rng.uniform(84, 464)
+        if math.hypot(x - CX, y - CY) < R_RING + 20:
             continue
-        if any(math.hypot(x - a, y - b) < 38 for a, b, _ in placed):
+        if any(math.hypot(x - a, y - b) < 24 for a, b, _ in placed):
             continue
         placed.append((x, y, rng.random()))
     for x, y, t in placed:
         if t > 0.975:
-            ui.circle(x, y, 3.2, fill=RED)
+            ui.circle(x, y, 2.6, fill=RED)
         elif t > 0.955:
-            ui.circle(x, y, 2.8, fill=GREEN)
+            ui.circle(x, y, 2.3, fill=GREEN)
         elif t > 0.93:
-            ui.circle(x, y, 2.6, fill=YELLOW)
+            ui.circle(x, y, 2.1, fill=YELLOW)
         elif t > 0.86:
-            ui.circle(x, y, 2.4, fill=BLUE)
+            ui.circle(x, y, 1.9, fill=BLUE)
         elif t > 0.5:
-            ui.circle(x, y, 2.0, fill=WHITE)
+            ui.circle(x, y, 1.7, fill=WHITE)
         else:
-            ui.circle(x, y, 1.3, fill=WHITE)
-    for x, y, c in ((140, 205, YELLOW), (1070, 330, WHITE), (1085, 880, YELLOW), (112, 790, WHITE)):
-        ui.sparkle(x, y, 16, c)
+            ui.circle(x, y, 1.1, fill=WHITE)
+    for x, y, c in ((58, 104, YELLOW), (322, 100, WHITE), (330, 424, YELLOW), (44, 428, WHITE)):
+        ui.sparkle(x, y, 11, c)
 
 
 def draw_ring(ui, st):
     e = st["elong"]
-    ui.circle(CX, CY, R_RING, outline=BLUE, width=3)
-    ui.arc(CX, CY, R_RING, -90, -90 + e, YELLOW, 9)
+    ui.circle(CX, CY, R_RING, outline=BLUE, width=2)
+    ui.arc(CX, CY, R_RING, -90, -90 + e, YELLOW, 6)
     # four phase markers
     for ang, kind in ((0, "new"), (90, "fq"), (180, "full"), (270, "lq")):
         x, y = ring_pos(ang)
-        ui.circle(x, y, 21, fill=BLACK)
+        ui.circle(x, y, 13, fill=BLACK)
         if kind == "new":
-            ui.circle(x, y, 14, fill=BLACK, outline=BLUE, width=3)
+            ui.circle(x, y, 9, fill=BLACK, outline=BLUE, width=2)
         elif kind == "full":
-            ui.circle(x, y, 14, fill=WHITE)
+            ui.circle(x, y, 9, fill=WHITE)
         else:
-            ui.circle(x, y, 14, fill=BLACK, outline=WHITE, width=2)
-            ui.pie(x, y, 14, -90, 90, WHITE) if kind == "fq" else ui.pie(x, y, 14, 90, 270, WHITE)
+            ui.circle(x, y, 9, fill=BLACK, outline=WHITE, width=2)
+            ui.pie(x, y, 9, -90, 90, WHITE) if kind == "fq" else ui.pie(x, y, 9, 90, 270, WHITE)
     # current position
     x, y = ring_pos(e)
-    ui.circle(x, y, 27, fill=BLACK)
-    ui.circle(x, y, 19, fill=YELLOW)
-    ui.circle(x, y, 7, fill=BLACK)
+    ui.circle(x, y, 17, fill=BLACK)
+    ui.circle(x, y, 12, fill=YELLOW)
+    ui.circle(x, y, 4, fill=BLACK)
 
 
 def draw_header(ui, st, tz):
     local = st["now"].astimezone(tz)
-    ui.rect(60, 44, 78, 50, YELLOW)
-    ui.text(94, 64, "LUNAR PHASE", "SemiBold", 25, WHITE, tracking=5)
-    ui.text(W - 60, 64, f"{local:%a}  {local:%b} {local.day}, {local.year}".upper(),
-            "SemiBold", 25, YELLOW, align="r", tracking=4)
+    ui.rect(28, 26, 34, 32, YELLOW)
+    ui.text(44, 48, "LUNAR PHASE", "SemiBold", 18, WHITE, tracking=4)
+    ui.text(W - 28, 48, f"{local:%a}  {local:%b} {local.day}, {local.year}".upper(),
+            "SemiBold", 18, YELLOW, align="r", tracking=2)
 
 
 def draw_title(ui, st):
     name = st["name"]
-    size = 124
-    while ui.text_width(name, "SemiBold", size) > W - 120:
+    size = 46
+    while ui.text_width(name, "SemiBold", size) > COL_W and size > 18:
         size -= 2
-    ui.text(W / 2, 1158, name, "SemiBold", size, WHITE, align="m")
+    ui.text(X0, 138, name, "SemiBold", size, WHITE)
     illum = int(round(st["illum"]))
-    ui.text(W / 2, 1214, f"{illum}% illuminated   ·   day {st['age']:.1f} of 29.5",
-            "Medium", 36, WHITE, align="m")
+    ui.text(X0, 170, f"{illum}% illuminated   ·   day {st['age']:.1f} of 29.5",
+            "Medium", 19, WHITE)
 
-    bits = [f"{st['dist_km']:,.0f} km away"]
+    dist = f"{st['dist_km']:,.0f} km away"
     if st["dist_km"] < 364_000:
-        bits[0] += " · near perigee"
+        dist += "  ·  near perigee"
     elif st["dist_km"] > 404_000:
-        bits[0] += " · near apogee"
+        dist += "  ·  near apogee"
+    ui.text(X0, 200, dist, "Medium", 16, YELLOW)
+
     rs = st["rs"]
     if rs:
+        bits = []
         if rs["rise"]:
             bits.append(f"rises {fmt_time(rs['rise'])}")
         if rs["set"]:
             bits.append(f"sets {fmt_time(rs['set'])}")
-    ui.text(W / 2, 1258, "   ·   ".join(bits), "Medium", 28, YELLOW, align="m")
+        if bits:
+            ui.text(X0, 224, "   ·   ".join(bits), "Medium", 15, WHITE)
 
 
 def draw_cards(ui, st, tz):
     now = st["now"]
-    top, h = 1296, 126
     cards = [
-        (60, "NEXT NEW MOON", st["next"]["new"], BLUE, None),
-        (620, "NEXT FULL MOON", st["next"]["full"], YELLOW,
+        (246, "NEXT NEW MOON", st["next"]["new"], BLUE, None),
+        (322, "NEXT FULL MOON", st["next"]["full"], YELLOW,
          st["full_name"].replace(" Moon", " Supermoon") if st["full_super"] else st["full_name"]),
     ]
-    for x, label, when, accent, extra in cards:
+    for top, label, when, accent, extra in cards:
         loc = when.astimezone(tz)
-        ui.rect(x, top, x + 8, top + h, accent)
-        tx = x + 30
-        ui.text(tx, top + 26, label, "SemiBold", 22, WHITE, tracking=3)
-        w = ui.text(tx, top + 88, fmt_date(loc), "SemiBold", 58, WHITE)
+        ui.rect(X0, top, X0 + 6, top + 66, accent)
+        tx = X0 + 24
+        ui.text(tx, top + 20, label, "SemiBold", 14, WHITE, tracking=2)
+        ui.text(tx, top + 52, fmt_date(loc), "SemiBold", 32, WHITE)
         if extra:
-            ui.text(x + 520 - 6, top + 88, extra, "Medium", 24, YELLOW, align="r")
-        ui.text(tx, top + 120, f"{loc:%a} {fmt_time(loc)}   ·   {rel(when, now)}", "Medium", 25, WHITE)
+            ui.text(X0 + COL_W, top + 52, extra, "Medium", 15, YELLOW, align="r")
+        ui.text(tx, top + 64, f"{loc:%a} {fmt_time(loc)}   ·   {rel(when, now)}", "Medium", 14, WHITE)
 
 
 def draw_week_labels(ui, days, tz):
-    y_line = 1448
-    ui.rect(60, y_line, W - 60, y_line + 2, BLUE)
+    y_line = 404
+    ui.rect(X0, y_line, X0 + COL_W, y_line + 2, BLUE)
     for i, (centre_x, dt) in enumerate(days):
         loc = dt.astimezone(tz)
         label = "TODAY" if i == 0 else f"{loc:%a} {loc.day}".upper()
-        ui.text(centre_x, 1580, label, "SemiBold", 20, YELLOW if i == 0 else WHITE, align="m", tracking=1)
+        ui.text(centre_x, 424, label, "SemiBold", 11, YELLOW if i == 0 else WHITE, align="m", tracking=1)
         if i == 0:
-            ui.circle(centre_x, WEEK_Y, 40, outline=YELLOW, width=3)
+            ui.circle(centre_x, WEEK_Y, 20, outline=YELLOW, width=2)
 
 
-WEEK_Y = 1514
-WEEK_R = 28
+WEEK_Y = 444
+WEEK_R = 14
 
 
 # --------------------------------------------------------------------------
 # Main
 # --------------------------------------------------------------------------
 def main():
-    tz = ZoneInfo(os.environ.get("TZ_NAME") or "America/Los_Angeles")
+    tz = ZoneInfo(os.environ.get("TZ_NAME") or "Asia/Shanghai")
     now_s = os.environ.get("MOON_NOW")
     now = datetime.fromisoformat(now_s) if now_s else datetime.now(timezone.utc)
     if now.tzinfo is None:
@@ -657,14 +668,14 @@ def main():
 
     local_now = now.astimezone(tz)
     days = []
-    slot = (W - 120) / 7
+    slot = COL_W / 7
     for i in range(7):
         if i == 0:
             when = now
         else:
             noon = (local_now + timedelta(days=i)).replace(hour=12, minute=0, second=0, microsecond=0)
             when = noon.astimezone(timezone.utc)
-        x = int(round(60 + slot * (i + 0.5)))
+        x = int(round(X0 + slot * (i + 0.5)))
         painter.draw(canvas, x, WEEK_Y, WEEK_R, elongation_deg(when))
         days.append((x, when))
 
